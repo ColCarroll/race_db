@@ -1,5 +1,7 @@
+import logging
 import os
 import json
+import shutil
 from dateutil import parser
 
 import click
@@ -10,13 +12,17 @@ def time_parse(time_str):
     return 60 * int(minutes) + float(seconds)
 
 
+def date_parse(date_str):
+    return parser.parse(date_str).strftime("%Y-%m-%d")
+
+
 class Journal(object):
     fields = (
         ("What was the name of the race?", "name", str),
-        ("What date (YYYY-mm-dd) was the race?", "date", parser.parse),
+        ("What date (YYYY-mm-dd) was the race?", "date", date_parse),
         ("What city was the race held in?", "city", str),
         ("What state was the race held in?", "state", str),
-        ("How long was the race (in meters)?" "distance", int),
+        ("How long was the race (in meters)?", "distance", int),
         ("What was your time (MM:SS)?", "time", time_parse),
         ("What was your overall place?", "place_overall", int),
         ("Out of how many runners?", "runners_in_race", int),
@@ -26,7 +32,9 @@ class Journal(object):
         ("Describe the race.", "notes", str)
         )
 
-    def __init__(self, journal_path):
+    def __init__(self, journal_path=None):
+        if journal_path is None:
+            journal_path = os.path.join(os.path.expanduser("~"), ".race_journal.json")
         self.journal_path = journal_path
         self.data = {}
         self._load()
@@ -36,8 +44,18 @@ class Journal(object):
             self.data = {"races": []}
             self._save()
         else:
+            broken = False
             with open(self.journal_path, 'r') as buff:
-                self.data = json.load(buff)
+                try:
+                    self.data = json.load(buff)
+                except ValueError:
+                    broken = True
+            if broken:
+                old_path = self.journal_path + ".old"
+                shutil.move(self.journal_path, old_path)
+                logging.warn("json was corrupted! Moved remains of old journal to {} and started a new one!".format(old_path))
+                self.data = {"races": []}
+                self._save()
 
     def _save(self):
         with open(self.journal_path, 'w') as buff:
@@ -82,43 +100,51 @@ class Journal(object):
         self.data["races"] = [race for race in self.races if race["id"] not in race_ids]
         self._save()
 
-    def prompt(self):
-        data = {j[1]: None for j in self.fields}
+    def prompt_loop(self, data):
+        for prompt, field, func in self.fields:
+            if data[field]:
+                user_input = raw_input("{} ({})\n>> ".format(prompt, data[field]))
+            else:
+                user_input = raw_input("{}\n>> ".format(prompt))
+            if user_input != "":
+                data[field] = func(user_input)
+        return data
+
+    def prompt(self, data=None):
+        if data is None:
+            data = {j[1]: None for j in self.fields}
         while True:
-            for prompt, field, func in self.fields:
-                if data[field]:
-                    user_input = raw_input("{} ({})".format(prompt, data[field]))
-                else:
-                    user_input = raw_input(prompt)
-                if user_input == "":
-                    data[field] = None
-                else:
-                    data[field] = func(user_input)
-            for _, field, _ in self.fields:
-                print("{}: {}".format(field, data[field]))
-            is_ok = raw_input("Does that look ok [Y] or would you like to try again [N]?")
-            if is_ok != "Y":
+            self.prompt_loop(data)
+            self.print_race(data)
+            is_ok = raw_input("Does that look ok [Y] or would you like to try again [N]?\n>> ")
+            if is_ok == "Y":
                 break
-        return self.add(data)
+        return data
 
-    def list(self):
+    def add_prompt(self):
+        return self.add(self.prompt())
+
+    def print_race(self, race):
+        for _, field, _ in self.fields:
+            click.echo("{}: {}".format(field, race.get(field)))
+
+    def update_prompt(self, race_id):
+        race_id = int(race_id)
+        data = self.read(race_id)
+        if data == {}:
+            click.echo("Race not found.  Exiting.")
+        else:
+            return self.update(race_id, self.prompt(data))
+
+    def list(self, search):
         races = sorted(self.races, key=lambda j: j["date"])
+        if search is not None:
+            races = [race for race in races if
+                     str(search).lower() in " ".join(map(str, race.values())).lower()]
+        keys = ["id", "date", "name", "city", "state"]
+        print("\t".join(keys))
         for race in races:
-            print(race["name"])
+            print("\t".join(map(str, [race[key] for key in keys])))
 
-
-@click.group()
-def cli():
-    """This is a user interface to interact with a race journal and output json."""
-
-
-@cli.command("add")
-@click.option("--filename", help="Which data file to use.")
-def interact_with_journal(filename):
-    Journal(filename).prompt()
-
-
-@cli.command("list")
-@click.option("--filename", help="Which data file to use.")
-def list_journal(filename):
-    Journal(filename).list()
+    def copy(self, other_path):
+        shutil.copy(self.journal_path, other_path)
