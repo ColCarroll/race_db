@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name='race-journal',
+    name='racedb',
     version='0.1',
     py_modules=['cli'],
     include_package_data=True,
@@ -10,6 +10,6 @@ setup(
     ],
     entry_points='''
         [console_scripts]
-        journal=cli:cli
+        racedb=cli:cli
     ''',
 )

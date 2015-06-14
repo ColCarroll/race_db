@@ -16,7 +16,7 @@ def date_parse(date_str):
     return parser.parse(date_str).strftime("%Y-%m-%d")
 
 
-class Journal(object):
+class RaceDB(object):
     fields = (
         ("What was the name of the race?", "name", str),
         ("What date (YYYY-mm-dd) was the race?", "date", date_parse),
@@ -32,33 +32,33 @@ class Journal(object):
         ("Describe the race.", "notes", str)
         )
 
-    def __init__(self, journal_path=None):
-        if journal_path is None:
-            journal_path = os.path.join(os.path.expanduser("~"), ".race_journal.json")
-        self.journal_path = journal_path
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = os.path.join(os.path.expanduser("~"), ".race_db.json")
+        self.db_path = db_path
         self.data = {}
         self._load()
 
     def _load(self):
-        if not os.path.exists(self.journal_path):
+        if not os.path.exists(self.db_path):
             self.data = {"races": []}
             self._save()
         else:
             broken = False
-            with open(self.journal_path, 'r') as buff:
+            with open(self.db_path, 'r') as buff:
                 try:
                     self.data = json.load(buff)
                 except ValueError:
                     broken = True
             if broken:
-                old_path = self.journal_path + ".old"
-                shutil.move(self.journal_path, old_path)
-                logging.warn("json was corrupted! Moved remains of old journal to {} and started a new one!".format(old_path))
+                old_path = self.db_path + ".old"
+                shutil.move(self.db_path, old_path)
+                logging.warn("json was corrupted! Moved remains of old database to {} and started a new one!".format(old_path))
                 self.data = {"races": []}
                 self._save()
 
     def _save(self):
-        with open(self.journal_path, 'w') as buff:
+        with open(self.db_path, 'w') as buff:
             json.dump(self.data, buff)
 
     @property
@@ -147,4 +147,4 @@ class Journal(object):
             print("\t".join(map(str, [race[key] for key in keys])))
 
     def copy(self, other_path):
-        shutil.copy(self.journal_path, other_path)
+        shutil.copy(self.db_path, other_path)
