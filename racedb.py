@@ -16,6 +16,14 @@ def date_parse(date_str):
     return parser.parse(date_str).strftime("%Y-%m-%d")
 
 
+def read_file(fname):
+    if not os.path.exists(fname):
+        return ""
+    with open(fname, 'r') as buff:
+        data = buff.read().replace("\n\n", "<br>")
+    return data
+
+
 class RaceDB(object):
     fields = (
         ("What was the name of the race?", "name", str),
@@ -29,7 +37,7 @@ class RaceDB(object):
         ("What was your age group place?", "place_ag", int),
         ("Out of how many runners in your age group?", "runners_in_ag", int),
         ("What is the url with results?", "results", str),
-        ("Describe the race.", "notes", str)
+        ("What is a path to a text file with a writeup?", "note_fname", str)
         )
 
     def __init__(self, db_path=None):
@@ -108,6 +116,8 @@ class RaceDB(object):
                 user_input = raw_input("{}\n>> ".format(prompt))
             if user_input != "":
                 data[field] = func(user_input)
+            if field == 'note_fname' and data.get(field, "") != "":
+                data['notes'] = read_file(data[field])
         return data
 
     def prompt(self, data=None):
@@ -117,7 +127,7 @@ class RaceDB(object):
             self.prompt_loop(data)
             self.print_race(data)
             is_ok = raw_input("Does that look ok [Y] or would you like to try again [N]?\n>> ")
-            if is_ok == "Y":
+            if is_ok == "Y" or is_ok == "":
                 break
         return data
 
@@ -125,7 +135,9 @@ class RaceDB(object):
         return self.add(self.prompt())
 
     def print_race(self, race):
-        for _, field, _ in self.fields:
+        default_fields = [j[1] for j in self.fields]
+        extra_fields = [key for key in race.keys() if key not in default_fields]
+        for field in default_fields + extra_fields:
             click.echo("{}: {}".format(field, race.get(field)))
 
     def update_prompt(self, race_id):
